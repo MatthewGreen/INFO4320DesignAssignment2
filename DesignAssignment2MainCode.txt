@@ -1,0 +1,197 @@
+/*
+Matthew Green (mcg67 || 1908903)
+Board Number: 18
+INFO 4320 - Design Assignment 2
+Arsenal FC 12th Man
+Due Date: Apr 1 2013
+
+ Some Code by Dr. Francois Guimbretiere and Tom Igone
+ Modified 12 Mar 2013
+ by Matthew Green - Cornell University
+
+*/
+
+#include "pitches.h"
+#include <Servo.h>
+
+//~~~Declare Servo Object
+Servo myservo;
+
+//~~~Input Pins
+const int analogInPinRANGE = A1; //Range Finder
+const int analogInPHOTO = A2; //Photocell Var Resistor
+
+//~~~Output Pins Setup
+const int motorPin = 6;
+const int ledRedPin = 10;
+const int ledGreenPin = 11;
+const int ledBluePin = 12;
+const int speaker = 8;
+const int servoPin = 9;
+
+//~~~Seeded Values
+//LED
+int redVal   = 255;
+int greenVal = 1;
+int blueVal  = 1;
+//Photocell values
+int lightsON = 800;
+int lightsOFF = 300;
+int lightsDARK = 200;
+int photoValue = 0;
+//Rangefinder values
+int rangeNEAR = 350;
+int rangeFAR = 800;
+int rangeValue =0;
+int rangeOutputValue = 0;
+//Servo
+const int openLid = 170;
+const int closeLid = 50;
+
+boolean flag_lipOpen = false;
+boolean ok_to_open = false;
+int openCount = 0;
+ 
+//Melody Constants------------------------------------------------------------------------------//
+
+// Waka Waka by Shakira:
+int wakaWaka[] = {
+0,NOTE_D4, NOTE_D4,NOTE_D4, NOTE_E4,NOTE_D4,0, NOTE_CS4, NOTE_CS4,NOTE_CS4,NOTE_D4,NOTE_CS4,0,NOTE_D4,NOTE_D4,NOTE_CS4,NOTE_B3,NOTE_B3,NOTE_D4,NOTE_D4,NOTE_CS4,NOTE_B3,NOTE_B3,NOTE_D4,NOTE_D4,
+NOTE_CS4,NOTE_B3,NOTE_D4,
+0,NOTE_D4,NOTE_D4,NOTE_D4,NOTE_E4,NOTE_D4,0, NOTE_CS4, NOTE_CS4,NOTE_CS4,NOTE_D4,NOTE_E4,0,NOTE_D4,NOTE_D4,NOTE_CS4,NOTE_B3,NOTE_B3,NOTE_D4,NOTE_D4,NOTE_CS4,NOTE_B3,NOTE_B3,NOTE_D4,NOTE_D4,NOTE_CS4,
+NOTE_B3,NOTE_D4,0,NOTE_D4,NOTE_E4,NOTE_D4,NOTE_FS4,
+0,NOTE_CS4,NOTE_A4,NOTE_FS4,0,NOTE_D4,NOTE_E4,NOTE_D4,NOTE_FS4,0,NOTE_CS4,NOTE_A4,NOTE_FS4,NOTE_D4,NOTE_D4,NOTE_D4,NOTE_D4,NOTE_D4,NOTE_E4,NOTE_D4,NOTE_E4,NOTE_E4,NOTE_E4,NOTE_E4,NOTE_E4,NOTE_FS4,NOTE_D4,NOTE_E4,
+NOTE_FS4,NOTE_FS4,NOTE_FS4,NOTE_FS4,NOTE_D4,NOTE_B3,NOTE_B3,NOTE_B3,NOTE_A3,0,NOTE_FS4,NOTE_D4,NOTE_B3,NOTE_B3,NOTE_D4,NOTE_D4,NOTE_D4,NOTE_D4,NOTE_D4,NOTE_D4,NOTE_D4,NOTE_E4,NOTE_D4,NOTE_E4,
+NOTE_E4,NOTE_E4,NOTE_E4,NOTE_FS4,NOTE_D4,NOTE_E4,
+NOTE_FS4,NOTE_FS4,NOTE_FS4,NOTE_FS4,NOTE_D4,NOTE_B3,NOTE_B3,NOTE_B3,NOTE_A3,0,NOTE_FS4,NOTE_D4,NOTE_B3,NOTE_B3,NOTE_D4,NOTE_D4};
+
+// note durations: 4 = quarter note, 8 = eighth note, etc.:
+int noteDurations[] = {
+4,8,16,8,4,4,4,8,16,8,4,4,4,8,16,8,8,16,8,16,8,8,16,8,16,8,4,4,
+4,8,16,8,4,4,4,8,16,8,4,4,4,8,16,8,8,16,8,16,8,8,16,8,16,8,4,4,4,8,4,8,3,
+4,8,3,3,4,8,4,8,3,4,8,3,3,8,16,8,16,8,4,6,6,16,8,16,8,8,8,6,
+6,16,8,16,8,8,16,8,8,4,8,8,8,8,8,3,6,16,8,16,8,8,6,8,8,8,8,8,8,4,
+6,16,8,16,8,8,16,8,8,4,8,8,8,8,8,2};
+
+//------------------------------------------------------------------------------//
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println(sizeof(wakaWaka)/sizeof(NOTE_D4));
+  Serial.println(sizeof(noteDurations)/sizeof(NOTE_D4));
+  
+  pinMode(analogInPHOTO, INPUT);
+  pinMode(analogInPinRANGE, INPUT);
+  
+  pinMode(motorPin, OUTPUT);
+  pinMode(ledRedPin, OUTPUT);
+  pinMode(ledGreenPin, OUTPUT);
+  pinMode(ledBluePin, OUTPUT);
+  pinMode(speaker, OUTPUT);
+  
+  myservo.attach(servoPin);
+}
+
+//Gets the input from the range finder and the potentiometer
+boolean read_photo_range()
+{
+  //Read Photo Input & Generate the output value
+  //Above 800 is good light, less than 300 is kinda dark, 200 and less DARK
+  photoValue = analogRead(analogInPHOTO);
+  //Serial.println(photoValue);
+  
+  //Read Range Input & Generate the output value
+  rangeValue = analogRead(analogInPinRANGE);
+  rangeValue = rangeValue * 5; //Correcting for the input/converting it to millimeters.
+  rangeOutputValue = map(rangeValue/5, 0, 1023, 0, 255); //Mapping it within the range of the analog output constraints
+  
+  //Testing if the lights in the room are on and someone is near the box
+  if((photoValue >= lightsON && rangeValue <= rangeNEAR)){
+    Serial.print("Photo sensor = " );                       
+    Serial.print(photoValue);
+    Serial.print("\t Range sensor = " );                       
+    Serial.print(rangeValue);
+    Serial.print("\t R_Output sensor = " );                       
+    Serial.println(rangeOutputValue);
+    return (true);
+  }
+  
+  return (false);
+}
+
+//Turn off all LEDS
+void led_Off(){
+  analogWrite(ledGreenPin, 0);
+  analogWrite(ledRedPin, 0);
+  analogWrite(ledBluePin, 0);
+}
+
+//Turn LED purple when the lid is closed and waiting for input
+void led_Closed_Lid(){
+  led_Off();
+  analogWrite(ledGreenPin, 0);
+  analogWrite(ledRedPin, 255);
+  analogWrite(ledBluePin, 255);
+}
+
+//Turn on the Red LED only.
+void led_On(){
+  led_Off();
+  analogWrite(ledGreenPin, 0);
+  analogWrite(ledRedPin, 255);
+  analogWrite(ledBluePin, 0);
+}
+
+//MelodyFunction
+//Plays the song Waka Waka by Shakira, the offical song of the 2010 world cup.
+void playWakaWaka() {
+  for (int thisNote = 0; thisNote < sizeof(noteDurations)/sizeof(NOTE_D4); thisNote++) {
+    
+    int noteDuration = 1000/noteDurations[thisNote];
+    tone(8, wakaWaka[thisNote],noteDuration);
+    int pauseBetweenNotes = noteDuration * 1.50;
+    delay(pauseBetweenNotes);
+    noTone(8);
+  }
+  delay(2000);
+}
+
+//
+
+void loop(){
+  
+  ok_to_open = read_photo_range();
+  
+  if(!ok_to_open){
+    led_Closed_Lid();
+    flag_lipOpen = false;
+  }
+  
+  if(ok_to_open){
+    //if(openCount < 2){
+      led_On();
+      if(myservo.read() != openLid){
+        myservo.write(openLid);
+      }
+      
+      playWakaWaka();
+      //delay(5000);
+      
+      if(myservo.read() != closeLid){
+        myservo.write(closeLid);
+      }
+ 
+      flag_lipOpen = true;
+    //}
+  
+    /*if(openCount > 2){
+      flag_lipOpen = false;
+      if(myservo.read() != closeLid){
+        myservo.write(closeLid);
+      }
+      led_Closed_Lid();
+    } */
+    openCount++;
+    //Serial.println(openCount);
+  }
+}
